@@ -8,13 +8,16 @@ import ParserST
 import Grammar
 
 type Name = String
-data Func = Plus
-            |Cons
+type HaskellOpName = String
+data Func =  Unnary HaskellOpName
+            |Binary HaskellOpName
+            |Cond
             |Hd
             |Tl
-            |Cond
-            |Comp 
-            deriving (Show)
+            |Cons
+            deriving (Show,Eq)
+            
+  
 data Term = Str [Char]
             |Bol Bool
             |Num Int
@@ -23,7 +26,7 @@ data Term = Str [Char]
             |Lam Name Term
             |Op String            -- opperator
             |Def Name Term
-            |Where [(Name,Term)] Term    -- Where e1,e2,e3 in  e 
+            |Where [(Name,Term)] Term    -- Where e1,e2,e3 in  e
             |S
             |K
             |I
@@ -34,7 +37,7 @@ data Term = Str [Char]
             |Nil
             |Empty
             deriving (Show)
-                       
+
 program :: Parser ([Term],Term)
 program = (do xs <- many_offside global_def
               _ <- symbol "."

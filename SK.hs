@@ -5,39 +5,7 @@ import Data.Tree
 
 import Debug.Trace
 
-
-type SK = Term            
--- data SK =  S
---           |K
---           |I
---           |Builtin Func
---           |Num Int
---           |App SK SK
---           |Var String
---           |Empty
---           deriving (Show)
--- data Term = Str [Char]
---             |Bol Bool
---             |Num Int
---             |Var Name
---             |App Term Term        -- application (lamda) value
---             |Lam Name Term
---             |Op String            -- opperator
---             |Def Name Term
---             |Where [(Name,Term)] Term    -- Where e1,e2,e3 in  e
---             |S
---             |K
---             |I
---             |Builtin Func
---             |Pair Term Term
---             |Nil
---             |Empty
---             deriving (Show)
--- data Func = Plus
---             |Cons
---             |Hd
---             |Tl
---             |Cond
+type SK = Term
 
 ppp :: Term -> String
 ppp (App x@(App _ _) y@(App _ _)) =   (ppp x)  ++ " @ " ++ "(" ++(ppp y) ++ ")"
@@ -47,7 +15,7 @@ ppp (App x@(App _ _) y) =   (ppp x)  ++ " @ " ++ (ppp y)
 ppp (App x y) = (ppp x) ++ " @ " ++(ppp y)
 ppp x = show x
 
-toDataTree :: Term -> Data.Tree.Tree [Char]
+toDataTree :: SK -> Data.Tree.Tree [Char]
 toDataTree (App x y) = Node "App" [toDataTree y,toDataTree x]
 toDataTree (Def n t) = Node ("Def " ++ show n) [toDataTree t]
 toDataTree (Lam x t) = Node ("Lam(" ++show x++")") [toDataTree t]
@@ -74,10 +42,6 @@ removevar v (Num x)| null v  = Num x
 removevar v (Bol x)| null v  = Bol x 
                    | otherwise = App K (Bol x)                   
 -- where e = var(v)                   
-removevar v (Op "+") | null v  = Builtin Plus
-                    | otherwise = App K (Builtin Plus)
-removevar v (Op "=") | null v  = Builtin Comp
-                    | otherwise = App K (Builtin Comp)
 removevar v (Op "cond") | null v  = Builtin Cond
                     | otherwise = App K (Builtin Cond)                    
 removevar v (Op "hd") | null v  = Builtin Hd
@@ -86,6 +50,10 @@ removevar v (Op "tl") | null v  = Builtin Tl
                     | otherwise = App K (Builtin Tl)                    
 removevar v (Op ":") | null v  = Builtin Cons
                     | otherwise = App K (Builtin Cons)                    
+removevar v (Op op) | null v && isUnary op = Builtin (Unnary op)
+                    | isUnary op = App K (Builtin (Unnary op))
+removevar v (Op op) | null v  = Builtin (Binary op)
+                    | otherwise = App K (Builtin (Binary op))                    
 removevar v (Var x) | null v  = Var x
                     | v == x = I
                     | otherwise = App K (Var x)
@@ -138,13 +106,64 @@ reduce ((Builtin Tl):(App _ x):rest) = case eval [x] of
                                           Nil -> Nil:[]
                                           r -> error $ "tail should be only called on a list. Got " ++ (show r) ++ "instead"      
 reduce ((Builtin Cons):(App _ x):(App _ y):rest) = (App I (Pair x y)):rest
-reduce ((Builtin Plus):(App _ x):(App _ y):rest) = (App I ((eval [x]) `skplus` (eval [y]))):rest 
-reduce ((Builtin Comp):(App _ x):(App _ y):rest) = (App I ((eval [x]) `skcomp` (eval [y]))):rest 
+
+reduce ((Builtin (Binary op)):(App _ x):(App _ y):rest) = (App I (binaryOp op (eval [x]) (eval [y]))):rest 
+reduce ((Builtin (Unnary op)):(App _ x):rest) = (App I (unnaryOp op (eval [x]))):rest 
 
 reduce _ = []
 -- reduce (x:xs) = error $ "reduce not deffined for " ++ (show (x:xs))
 -- reduce [] = []
+unnaryOp :: HaskellOpName -> SK -> SK
+unnaryOp op x = case x of 
+                  (Bol x') -> Bol (fnBool x')
+                  (Num x') -> Num (fnInt x')
+                  x' -> error $ "opperator " ++ op ++ "is not defined for arguments " ++ (show x')
+                where
+                    fnBool = case lookup op boolOps of 
+                                 (Just f) -> f
+                                 Nothing -> error $ "fnBool undefined operator " ++ op                  
+                    fnInt = case lookup op intOps of 
+                                 (Just f) -> f
+                                 Nothing -> error $ "fnInt undefined operator " ++ op                  
+                    boolOps = [("not",\x -> not (x::Bool))]
+                    intOps = [("neg",\x -> -(x::Int))]
+                    
+isUnary :: HaskellOpName -> Bool
+isUnary x | elem x ["not","neg"] = True
+isUnary _ = False                  
 
+binaryOp :: HaskellOpName -> SK -> SK -> SK
+binaryOp op x y = case (x,y) of
+                   (Num x',Num y') | intIntOp -> Num $ fnIntInt x' y'
+                   (Num x',Num y') | intBoolOp -> Bol $ fnIntBool x' y'
+                   (Bol x',Bol y') -> Bol $ fnBool x' y'
+                   (x',y') -> error $ "opperator " ++ op ++ "is not defined for arguments " ++ (show (x',y'))
+                  where 
+                        fnIntInt = case lookup op intIntOps of 
+                                        (Just f) -> f
+                                        Nothing -> error $ "fnIntInt undefined operator " ++ op
+                        fnIntBool = case lookup op intBoolOps of 
+                                        (Just f) -> f
+                                        Nothing -> error $ "fnIntBool undefined operator " ++ op
+                        fnBool = case lookup op boolOps of 
+                                        (Just f) -> f
+                                        Nothing -> error $ "fnBool undefined operator " ++ op
+                        intBoolOps = [("=",\x y -> (x::Int) == (y::Int)),
+                                      ("~=",\x y -> (x::Int) /= (y::Int)),
+                                      ("<",\x y -> (x::Int) < (y::Int)),
+                                      (">",\x y -> (x::Int) > (y::Int)),
+                                      ("<=",\x y -> (x::Int) <= (y::Int)),
+                                      (">=",\x y -> (x::Int) >= (y::Int))]
+                        intIntOps = [("+",\x y -> (x::Int) + (y::Int)),
+                                     ("-",\x y -> (x::Int) - (y::Int)),
+                                     ("*",\x y -> (x::Int) * (y::Int)),
+                                     ("/",\x y -> (x::Int) `div` (y::Int))]
+                        boolOps = [("=",\x y -> (x::Bool) == (y::Bool)),
+                                   ("~=",\x y -> (x::Bool) /= (y::Bool)),
+                                   ("and",\x y -> (x::Bool) && (y::Bool)),
+                                   ("or",\x y -> (x::Bool) || (y::Bool))]
+                        intBoolOp = or (map (==op) (map fst intBoolOps))
+                        intIntOp = or (map (==op) (map fst intIntOps))
 skcomp :: SK -> SK -> SK
 (Num x) `skcomp` (Num y) = Bol (x == y)
 p `skcomp` q = error $ "skcomp is defined only for integers.\n" ++ (show p) ++ "\n" ++ (show q)

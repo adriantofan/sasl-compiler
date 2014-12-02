@@ -33,8 +33,10 @@ traceCompute t = let p = case parse expr t of
                        putStrLn (ppp r)
                        putStrLn "Result:"
                        putStrLn $ ppp $ eval [r]
+                       
 -- compute "f 0 where f a = if a = 1 then 0 else a + f (a + 1)"
 -- compute "f 0 where f a = if a = 1 then 14 else f (a + 1)"
+-- compute "sum 5 where sum x = if x = 0 then 0 else x + sum (x-1)"
 -- runhaskell Main.hs "f 0 where f a = if a = 1 then 0 else a + f (a + 1)"  > out.hs 2>&1
 
 prop_1 = case  compute "f 0 where f a = if a = 1 then 14 else f (a + 1)" of 
