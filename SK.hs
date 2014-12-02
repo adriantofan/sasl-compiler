@@ -161,14 +161,27 @@ notTree _ = True
 
 isRecusive :: String->Term->Bool
 -- isRecusive n x | traceShow ("isRevursive",n,x) False = undefined
-isRecusive n _ | n == "f" = True
+isRecusive n (Var x) =  x == n
+isRecusive n (App x y) = isRecusive n x || isRecusive n y
+isRecusive n (Bol _) = False
+isRecusive n (Num _) = False
+isRecusive n (Builtin _) = False
+isRecusive n (Lam x _) = x /= n -- is not recursive if the lambda captures the name
+isRecusive n (Def x _) = x /= n -- is not recursive if the lambda captures the name
+isRecusive n (Where n_t_pairs e) = or (map rec n_t_pairs) || isRecusive n e
+                                   where rec = \(n',t') -> not (n' == n) || isRecusive n t' -- no recurse
+isRecusive n (Pair x y) = isRecusive n x || isRecusive n y                                  
+isRecusive n (Op _) = False
+isRecusive n x | traceShow ("isRevursive not implemented for ",n,x) False = undefined
 isRecusive _ _ = False
+
 -- takes a Where definition and transforms it in function application by abstracting variables
 -- 3 + f == 5  where f = 1 + 1  
 -- where f = (App (App (Op "+") (Num 1)) (Num 1)) in  (App (App (Op "+") (Num 3)) (Var "f"))
 -- Where [("f",(App (App (Op "+") (Num 1)) (Num 1)))] (App (App (Op "+") (Num 3)) (Var "f"))
 -- >removevar "" $ Where [("f",(App (App (Op "+") (Num 1)) (Num 1)))] (App (App (Op "+") (Num 3)) (Var "f"))
 -- >App (App (App S (App (App S (App K (Builtin Plus))) (App K (Num 3)))) I) (App (App (Builtin Plus) (Num 1)) (Num 1))
+
 transform_where2app:: Term -> Term
 -- transform_where2app (Where ([(n,e)]) x) | traceShow ("transform_where2app",n,e,x) False = undefined
 transform_where2app (Where ([(n,e)]) x) = case e of 
