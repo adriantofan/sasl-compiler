@@ -2,7 +2,7 @@ module SASL where
   
 import Control.Monad
 import Data.Char
-import Text.Show.Functions
+-- import Text.Show.Functions
 
 import ParserST
 import Grammar
@@ -67,8 +67,9 @@ expr = do e <- condexpr
           (do d <- expr'
               return (makeWhere d e)) +++ (return e)
 makeWhere:: Term -> Term -> Term 
-makeWhere (Def name val) a = Where [(name,val)] a 
-    
+makeWhere (Def n val) a = Where [(n,val)] a 
+makeWhere x y = error $ "makeWhere not defined for" ++ show x ++ show y
+
 expr' :: Parser Term
 expr' = do _ <- symbol "where"
            def
@@ -121,9 +122,9 @@ simple :: Parser Term
 simple = variable +++ builtin +++ constant +++ paren
 
 builtin :: Parser Term
-builtin = do x <- symbol "hd"
+builtin = do _ <- symbol "hd"
              return (Op "hd") 
-          +++ do x <- symbol "tl"
+          +++ do _ <- symbol "tl"
                  return (Op "tl")
 
 paren :: Parser Term         
@@ -148,7 +149,7 @@ num = do x <- natural
          return (Num x)
 
 nil :: Parser Term
-nil = do x<- (symbol "nil")
+nil = do _ <- (symbol "nil")
          return Nil
         
 str :: Parser Term

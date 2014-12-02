@@ -61,7 +61,7 @@ instance (Monad m) => Monad (ReaderT m s) where
                                             readStateT (f v) s
                                             
 instance MonadPlus m => MonadPlus (ReaderT m s) where
-  mzero = ReaderT $ \s -> mzero
+  mzero = ReaderT $ \_ -> mzero
   (ReaderT p) `mplus` (ReaderT q) = ReaderT $ \s -> p s `mplus` q s                       
 
 instance Monad m => ReaderMonad (ReaderT m s) s where

@@ -3,7 +3,7 @@ import Grammar
 import SASL
 import SK
 import ParserST
-
+import System.Environment  
 
 parse:: Parser a -> String -> [(a, Pstring)]
 parse p xs = runStateT (readStateT (strip p) (0,0)) ((0,0),xs)
@@ -17,12 +17,22 @@ compute :: String -> IO ()
 compute t = let p = case parse expr t of
                       [] -> error "Unable to parse"
                       [xs] -> fst xs
-                      r -> error $ "Syntax error" ++ show r
+                      x -> error $ "Syntax error" ++ show x
                 r = removevar "" p
-            in do putStrLn "parse result:"
-                  putStrLn (show p)
+            in do putStrLn $ "Going to parse" ++ t
+                  putStrLn "parse result:"
+                  putStrLn (ppp p)
                   putStrLn "after reduction:"
-                  putStrLn (show r)
+                  putStrLn (ppp r)
                   putStrLn "Result:"
-                  putStrLn $ show $ eval [r]
--- compute "x 2 where x a = if x = 0 then 0 else a + x (a - 1)"
+                  putStrLn $ ppp $ eval [r]
+-- compute "f 0 where f a = if a = 1 then 0 else a + f (a + 1)"
+-- compute "f 0 where f a = if a = 1 then 14 else f (a + 1)"
+-- runhaskell Main.hs "f 0 where f a = if a = 1 then 0 else a + f (a + 1)"  > out.hs 2>&1
+
+
+main :: IO ()
+main =  do args <- getArgs
+           putStrLn "The arguments are:"  
+           mapM compute args
+           putStrLn "Done"

@@ -1,11 +1,8 @@
 module SK where
   
-import SASL
+import SASL 
 import Data.Tree 
 
-import Control.Monad
-import Control.Applicative hiding (many)
-import Text.Show.Functions
 import Debug.Trace
 
 
@@ -41,14 +38,23 @@ type SK = Term
 --             |Hd
 --             |Tl
 --             |Cond
+
+ppp :: Term -> String
+ppp (App x@(App _ _) y@(App _ _)) =   (ppp x)  ++ " @ " ++ "(" ++(ppp y) ++ ")"
+ppp (App x y@(App _ _)) =  (ppp x) ++ " @ " ++ "(" ++(ppp y) ++ ")"
+ppp (App x@(App _ _) y) =   (ppp x)  ++ " @ " ++ (ppp y)
+
+ppp (App x y) = (ppp x) ++ " @ " ++(ppp y)
+ppp x = show x
+
 toDataTree :: Term -> Data.Tree.Tree [Char]
 toDataTree (App x y) = Node "App" [toDataTree y,toDataTree x]
-toDataTree (Def name t) = Node ("Def " ++show name) [toDataTree t]
+toDataTree (Def n t) = Node ("Def " ++ show n) [toDataTree t]
 toDataTree (Lam x t) = Node ("Lam(" ++show x++")") [toDataTree t]
 toDataTree (Where xs e) = Node ("Where") [Node "Exp" [(toDataTree e)],Node "Defs" (defs xs)]
                                     where 
                                       defs [] = []
-                                      defs  ((n,t):xs) = (toDataTree (Def n t)):defs xs
+                                      defs  ((n,t):ys) = (toDataTree (Def n t)):defs ys
 
 toDataTree term = Node (show term) []
 
@@ -58,6 +64,7 @@ pp = putStrLn.drawTree.toDataTree
 
 
 removevar:: String -> Term -> SK
+-- removevar v x | traceShow ("removevar v=",v," ,exp=",ppp x) False = undefined
 removevar v d@(Where _ _) = removevar v (transform_where2app d)
 removevar v (Lam v' t) = removevar v (removevar v' t)
 
@@ -81,22 +88,28 @@ removevar v (Op ":") | null v  = Builtin Cons
                     | otherwise = App K (Builtin Cons)                    
 removevar v (Var x) | null v  = Var x
                     | v == x = I
-                    | otherwise = App K (Var v)
+                    | otherwise = App K (Var x)
 -- where e = f@a
 removevar v (App f x) | null v = App (removevar v f) (removevar v x)
                       | otherwise = (App (App S (removevar v f)) (removevar v x))
 -- everyting else
-removevar _ S = S
-removevar _ K = K
-removevar _ I = I
-removevar _ (Builtin x) = Builtin x
+removevar v S |null v = S
+              |otherwise = App K S
+removevar v K |null v = K
+              |otherwise =  App K K
+removevar v I |null v = I
+              |otherwise = App K I
+removevar v Y |null v = Y
+              |otherwise = App K Y
+removevar v (Builtin x)|null v = Builtin x
+                       |otherwise =App K (Builtin x)
 removevar _ Empty = Empty
 removevar _ Nil = Nil
 -- everyting else !!?!?!?
 removevar v x = error $ "removevar not defined for variable " ++ (show v) ++ " and term "  ++ (show x)
 
 eval :: [SK] -> SK
--- eval xs | traceShow xs False = undefined
+-- eval xs | traceShow ("eval",xs) False = undefined
 eval [] = Empty
 eval x@((App p _):_) = eval $ p:x
 eval [x] = x
@@ -105,15 +118,11 @@ eval xs = if null reduced  then (head xs) else eval reduced
  
 -- reduce (Num x) = Num x
 reduce :: [SK] -> [SK]
--- reduce xs | traceShow xs False = undefined
-reduce (I:(App _ x):(App _ y):rest) = (App x y):rest              -- I combinator
-reduce (I:(App _ x):[]) = x:[]
-reduce (K:(App _ x):(App _ y):rest) = (App I x):rest              -- K combinator
-reduce (S:(App _ f):(App _ g):(App _ x):rest) =  l:a:rest where   -- S combinator
-                                                   a = (App l r)  
-                                                   l = (App f x) 
-                                                   r = (App g x) 
-reduce (Y: recurse@(App _ f):rest) =(App f recurse):rest -- Y combinator
+-- reduce xs | traceShow ("reduce",map ppp (take 3 xs)) False = undefined
+reduce (I:(App _ x):xs) = x:xs
+reduce (K:(App _ x):(App _ _):rest) = (App I x):rest              -- K combinator
+reduce (S:(App _ f):(App _ g):(App _ x):rest) =  (App (App f x) (App g x)):rest   -- S combinator                     
+reduce (Y: recurse@(App _ f):rest) = (App f (App Y f)):rest -- Y combinator
 
 reduce (Nil:rest) = Nil:rest
 reduce ((Builtin Cond):(App _ c):(App _ x):(App _ y):rest) = case eval [c] of
@@ -121,11 +130,11 @@ reduce ((Builtin Cond):(App _ c):(App _ x):(App _ y):rest) = case eval [c] of
                                                                 (Bol False) -> (App I y):rest
                                                                 r -> error $ "cond is deffined only for Bool. Got " ++ (show r)
 reduce ((Builtin Hd):(App _ x):rest) = case eval [x] of
-                                          p@(Pair x _) -> x:rest
+                                          (Pair y _) -> y:rest
                                           Nil -> Nil:[]
                                           r -> error $ "head should be only called on a list. Got " ++ (show r)
 reduce ((Builtin Tl):(App _ x):rest) = case eval [x] of
-                                          p@(Pair _ y) -> y:rest
+                                          (Pair _ y) -> y:rest
                                           Nil -> Nil:[]
                                           r -> error $ "tail should be only called on a list. Got " ++ (show r) ++ "instead"      
 reduce ((Builtin Cons):(App _ x):(App _ y):rest) = (App I (Pair x y)):rest
@@ -150,9 +159,10 @@ notTree:: SK -> Bool
 notTree (App _ _) = False
 notTree _ = True
 
-isRecursive::String->Term->Bool
-isRecusive n x | n == "ss" = True
-isRecursive n x = False
+isRecusive :: String->Term->Bool
+-- isRecusive n x | traceShow ("isRevursive",n,x) False = undefined
+isRecusive n _ | n == "f" = True
+isRecusive _ _ = False
 -- takes a Where definition and transforms it in function application by abstracting variables
 -- 3 + f == 5  where f = 1 + 1  
 -- where f = (App (App (Op "+") (Num 1)) (Num 1)) in  (App (App (Op "+") (Num 3)) (Var "f"))
@@ -160,11 +170,11 @@ isRecursive n x = False
 -- >removevar "" $ Where [("f",(App (App (Op "+") (Num 1)) (Num 1)))] (App (App (Op "+") (Num 3)) (Var "f"))
 -- >App (App (App S (App (App S (App K (Builtin Plus))) (App K (Num 3)))) I) (App (App (Builtin Plus) (Num 1)) (Num 1))
 transform_where2app:: Term -> Term
-transform_where2app (Where ([(name,e)]) x) = case e of 
-                                               (Lam x' e') | isRecursive name e -> App (removevar name x) (App Y (removevar name (removevar x' e')))
-                                               (Lam x' e') | otherwise -> App (removevar name x) (removevar x' e')    
-                                               -- (Lam x' e') -> App (removevar name x) (removevar x' e')
-                                               otherwise   -> App (removevar name x) e
+-- transform_where2app (Where ([(n,e)]) x) | traceShow ("transform_where2app",n,e,x) False = undefined
+transform_where2app (Where ([(n,e)]) x) = case e of 
+                                               (Lam x' e') | isRecusive n e' -> App (removevar n x) (App Y (removevar n (removevar x' e')))
+                                               (Lam x' e') | otherwise -> App (removevar n x) (removevar x' e')    
+                                               _   -> App (removevar n x) e
                                                
 transform_where2app x = error $ "transform_where2app is not defined for" ++ (show x)
 

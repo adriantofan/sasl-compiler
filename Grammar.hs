@@ -2,8 +2,8 @@ module Grammar where
 import ParserST
 import Control.Monad
 import Data.Char
-import Debug.Trace
-import Data.Maybe
+-- import Debug.Trace
+-- import Data.Maybe
 
 infixr 5 +++
 
@@ -152,7 +152,7 @@ comment = do _ <- string "--"
              return ()
              
 junck :: Parser ()
-junck = do x <- setenv (0::Int,-1::Int) (many (spaces +++ comment))
+junck = do _ <- setenv (0::Int,-1::Int) (many (spaces +++ comment))
            return ()
            
 -- parse already invokes junk befor p           
@@ -178,7 +178,7 @@ many_offside p = many1_offside p +++ return []
 
 
 off :: Parser a -> Parser a
-off p = do (dl,dc) <- env_pos
+off p = do (_,dc) <- env_pos
            ((l,c),_) <- fetch_pos
            guard (c == dc)
            setenv (l,c) p
