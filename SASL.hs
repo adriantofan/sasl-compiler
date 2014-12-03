@@ -67,15 +67,26 @@ def = do n <- name
             
 expr :: Parser Term
 expr = do e <- condexpr
-          (do d <- expr'
-              return (makeWhere d e)) +++ (return e)
-makeWhere:: Term -> Term -> Term 
-makeWhere (Def n val) a = Where [(n,val)] a 
-makeWhere x y = error $ "makeWhere not defined for" ++ show x ++ show y
-
-expr' :: Parser Term
-expr' = do _ <- symbol "where"
-           def
+          (do d <- exprs''
+              return (makeWhere' d e)) +++ (return e)
+              
+exprs'' :: Parser [Term]
+exprs'' = do _ <- symbol "where"
+             many1_offside def
+           
+makeWhere':: [Term] -> Term -> Term 
+makeWhere' defs a = Where (map defToPair defs) a
+  where defToPair x = case x of
+                        (Def n val)-> (n,val)
+                        _ -> error $ "where definition  should contain only defs. got "++ "" ++" instead"
+              
+-- makeWhere:: Term -> Term -> Term
+-- makeWhere (Def n val) a = Where [(n,val)] a
+-- makeWhere x y = error $ "makeWhere not defined for" ++ show x ++ show y
+--
+-- expr' :: Parser Term
+-- expr' = do _ <- symbol "where"
+--            def
                 
         -- "where" (many def) expr'
         -- +++ ""

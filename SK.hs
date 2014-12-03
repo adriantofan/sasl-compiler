@@ -1,5 +1,5 @@
 module SK where
-  
+import Prelude hiding ((!!))  
 import SASL 
 import Data.Tree 
 
@@ -7,11 +7,19 @@ import Debug.Trace
 
 type SK = Term
 
+infixl 9 !! -- first removevar
+infixl 8 @@ -- then App
+
+(@@):: Term->Term->Term
+(@@) = App
+
+(!!):: String -> Term -> SK
+(!!) = removevar
+
 ppp :: Term -> String
 ppp (App x@(App _ _) y@(App _ _)) =   (ppp x)  ++ " @ " ++ "(" ++(ppp y) ++ ")"
 ppp (App x y@(App _ _)) =  (ppp x) ++ " @ " ++ "(" ++(ppp y) ++ ")"
 ppp (App x@(App _ _) y) =   (ppp x)  ++ " @ " ++ (ppp y)
-
 ppp (App x y) = (ppp x) ++ " @ " ++(ppp y)
 ppp x = show x
 
@@ -63,6 +71,8 @@ removevar v (App f x) | null v = App (removevar v f) (removevar v x)
 -- everyting else
 removevar v S |null v = S
               |otherwise = App K S
+removevar v U |null v = U
+              |otherwise = App K U
 removevar v K |null v = K
               |otherwise =  App K K
 removevar v I |null v = I
@@ -91,7 +101,7 @@ reduce (I:(App _ x):xs) = x:xs
 reduce (K:(App _ x):(App _ _):rest) = (App I x):rest              -- K combinator
 reduce (S:(App _ f):(App _ g):(App _ x):rest) =  (App (App f x) (App g x)):rest   -- S combinator                     
 reduce (Y:(App _ f):rest) = (App f (App Y f)):rest -- Y combinator
-
+reduce (U:(App _ f):(App _ z):rest) = (f @@ ((Builtin Hd) @@ z) @@ ((Builtin Tl) @@ z)):rest
 reduce (Nil:rest) = Nil:rest
 reduce ((Builtin Cond):(App _ c):(App _ x):(App _ y):rest) = case eval [c] of
                                                                 (Bol True) -> (App I x):rest 
@@ -178,21 +188,21 @@ notTree:: SK -> Bool
 notTree (App _ _) = False
 notTree _ = True
 
-isRecusive :: String->Term->Bool
--- isRecusive n x | traceShow ("isRevursive",n,x) False = undefined
-isRecusive n (Var x) =  x == n
-isRecusive n (App x y) = isRecusive n x || isRecusive n y
-isRecusive _ (Bol _) = False
-isRecusive _ (Num _) = False
-isRecusive _ (Builtin _) = False
-isRecusive n (Lam x _) = x /= n -- is not recursive if the lambda captures the name
-isRecusive n (Def x _) = x /= n -- is not recursive if the lambda captures the name
-isRecusive n (Where n_t_pairs e) = or (map rec n_t_pairs) || isRecusive n e
-                                   where rec = \(n',t') -> not (n' == n) || isRecusive n t' -- no recurse
-isRecusive n (Pair x y) = isRecusive n x || isRecusive n y                                  
-isRecusive _ (Op _) = False
-isRecusive n x | traceShow ("isRevursive not implemented for ",n,x) False = undefined
-isRecusive _ _ = False
+isRecursive :: String->Term->Bool
+-- isRecursive n x | traceShow ("isRevursive",n,x) False = undefined
+isRecursive n (Var x) =  x == n
+isRecursive n (App x y) = isRecursive n x || isRecursive n y
+isRecursive _ (Bol _) = False
+isRecursive _ (Num _) = False
+isRecursive _ (Builtin _) = False
+isRecursive n (Lam x y) = x /= n && isRecursive n y-- is not recursive if the lambda captures the name
+isRecursive n (Def x y) = x /= n && isRecursive n y-- is not recursive if the lambda captures the name
+isRecursive n (Where n_t_pairs e) = or (map rec n_t_pairs) || isRecursive n e
+                                   where rec = \(n',t') -> not (n' == n) && isRecursive n t' -- no recurse
+isRecursive n (Pair x y) = isRecursive n x || isRecursive n y                                  
+isRecursive _ (Op _) = False
+isRecursive n x | traceShow ("isRevursive not implemented for ",n,x) False = undefined
+isRecursive _ _ = False
 
 -- takes a Where definition and transforms it in function application by abstracting variables
 -- 3 + f == 5  where f = 1 + 1  
@@ -204,9 +214,16 @@ isRecusive _ _ = False
 transform_where2app:: Term -> Term
 -- transform_where2app (Where ([(n,e)]) x) | traceShow ("transform_where2app",n,e,x) False = undefined
 transform_where2app (Where ([(n,e)]) x) = case e of 
-                                               (Lam x' e') | isRecusive n e' -> App (removevar n x) (App Y (removevar n (removevar x' e')))
-                                               (Lam x' e') | otherwise -> App (removevar n x) (removevar x' e')    
-                                               _   -> App (removevar n x) e
-                                               
+   (Lam x' e') | isRecursive n e' -> App (removevar n x) (App Y (removevar n (removevar x' e')))
+   (Lam x' e') | otherwise -> App (removevar n x) (removevar x' e')    
+   _   -> App (removevar n x) e
+transform_where2app (Where ([(f,e2),(g,e3)]) e1) = case isRecursive g e2 || isRecursive f e3 of
+  True -> error "transform_where2app recursive not implemented"
+  False -> U @@ (f!!(U @@ g!!(K @@ e1))) @@ (list [""!!e2,""!!e3])
 transform_where2app x = error $ "transform_where2app is not defined for" ++ (show x)
 
+list :: [Term]->Term
+list xs = foldr (\x y -> (Builtin Cons) @@ x @@ y) Nil xs
+
+   -- _   -> error $ "undefined transform_where2app " ++ (show [(f1,e1),(f2,e2)])
+                                               
