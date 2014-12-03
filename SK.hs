@@ -90,7 +90,7 @@ reduce :: [SK] -> [SK]
 reduce (I:(App _ x):xs) = x:xs
 reduce (K:(App _ x):(App _ _):rest) = (App I x):rest              -- K combinator
 reduce (S:(App _ f):(App _ g):(App _ x):rest) =  (App (App f x) (App g x)):rest   -- S combinator                     
-reduce (Y: recurse@(App _ f):rest) = (App f (App Y f)):rest -- Y combinator
+reduce (Y:(App _ f):rest) = (App f (App Y f)):rest -- Y combinator
 
 reduce (Nil:rest) = Nil:rest
 reduce ((Builtin Cond):(App _ c):(App _ x):(App _ y):rest) = case eval [c] of
@@ -125,15 +125,15 @@ unnaryOp op x = case x of
                     fnInt = case lookup op intOps of 
                                  (Just f) -> f
                                  Nothing -> error $ "fnInt undefined operator " ++ op                  
-                    boolOps = [("not",\x -> not (x::Bool))]
-                    intOps = [("neg",\x -> -(x::Int))]
+                    boolOps = [("not",\x' -> not (x'::Bool))]
+                    intOps = [("neg",\x' -> -(x'::Int))]
                     
 isUnary :: HaskellOpName -> Bool
 isUnary x | elem x ["not","neg"] = True
 isUnary _ = False                  
 
 binaryOp :: HaskellOpName -> SK -> SK -> SK
-binaryOp op x y = case (x,y) of
+binaryOp op a b = case (a,b) of
                    (Num x',Num y') | intIntOp -> Num $ fnIntInt x' y'
                    (Num x',Num y') | intBoolOp -> Bol $ fnIntBool x' y'
                    (Bol x',Bol y') -> Bol $ fnBool x' y'
@@ -182,15 +182,15 @@ isRecusive :: String->Term->Bool
 -- isRecusive n x | traceShow ("isRevursive",n,x) False = undefined
 isRecusive n (Var x) =  x == n
 isRecusive n (App x y) = isRecusive n x || isRecusive n y
-isRecusive n (Bol _) = False
-isRecusive n (Num _) = False
-isRecusive n (Builtin _) = False
+isRecusive _ (Bol _) = False
+isRecusive _ (Num _) = False
+isRecusive _ (Builtin _) = False
 isRecusive n (Lam x _) = x /= n -- is not recursive if the lambda captures the name
 isRecusive n (Def x _) = x /= n -- is not recursive if the lambda captures the name
 isRecusive n (Where n_t_pairs e) = or (map rec n_t_pairs) || isRecusive n e
                                    where rec = \(n',t') -> not (n' == n) || isRecusive n t' -- no recurse
 isRecusive n (Pair x y) = isRecusive n x || isRecusive n y                                  
-isRecusive n (Op _) = False
+isRecusive _ (Op _) = False
 isRecusive n x | traceShow ("isRevursive not implemented for ",n,x) False = undefined
 isRecusive _ _ = False
 
