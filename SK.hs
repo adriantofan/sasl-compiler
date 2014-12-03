@@ -17,10 +17,12 @@ infixl 8 @@ -- then App
 (!!) = removevar
 
 ppp :: Term -> String
+
 ppp (App x@(App _ _) y@(App _ _)) =   (ppp x)  ++ " @ " ++ "(" ++(ppp y) ++ ")"
 ppp (App x y@(App _ _)) =  (ppp x) ++ " @ " ++ "(" ++(ppp y) ++ ")"
 ppp (App x@(App _ _) y) =   (ppp x)  ++ " @ " ++ (ppp y)
 ppp (App x y) = (ppp x) ++ " @ " ++(ppp y)
+ppp (Pair x y) = "("++(ppp x)++")" ++ ":" ++"("++(ppp y)++")"
 ppp x = show x
 
 toDataTree :: SK -> Data.Tree.Tree [Char]
@@ -82,7 +84,8 @@ removevar v Y |null v = Y
 removevar v (Builtin x)|null v = Builtin x
                        |otherwise =App K (Builtin x)
 removevar _ Empty = Empty
-removevar _ Nil = Nil
+removevar v Nil |null v = Nil
+                |otherwise = App K Nil
 -- everyting else !!?!?!?
 removevar v x = error $ "removevar not defined for variable " ++ (show v) ++ " and term "  ++ (show x)
 
@@ -109,11 +112,9 @@ reduce ((Builtin Cond):(App _ c):(App _ x):(App _ y):rest) = case eval [c] of
                                                                 r -> error $ "cond is deffined only for Bool. Got " ++ (show r)
 reduce ((Builtin Hd):(App _ x):rest) = case eval [x] of
                                           (Pair y _) -> y:rest
-                                          Nil -> Nil:[]
                                           r -> error $ "head should be only called on a list. Got " ++ (show r)
 reduce ((Builtin Tl):(App _ x):rest) = case eval [x] of
                                           (Pair _ y) -> y:rest
-                                          Nil -> Nil:[]
                                           r -> error $ "tail should be only called on a list. Got " ++ (show r) ++ "instead"      
 reduce ((Builtin Cons):(App _ x):(App _ y):rest) = (App I (Pair x y)):rest
 
@@ -144,6 +145,9 @@ isUnary _ = False
 
 binaryOp :: HaskellOpName -> SK -> SK -> SK
 binaryOp op a b = case (a,b) of
+                   (Nil,Nil) -> Bol True
+                   (Nil,_) -> Bol False
+                   (_,Nil) -> Bol False
                    (Num x',Num y') | intIntOp -> Num $ fnIntInt x' y'
                    (Num x',Num y') | intBoolOp -> Bol $ fnIntBool x' y'
                    (Bol x',Bol y') -> Bol $ fnBool x' y'
@@ -188,6 +192,9 @@ notTree:: SK -> Bool
 notTree (App _ _) = False
 notTree _ = True
 
+-- isRecursive :: String->Term->Bool
+-- isRecursive n x  = let result = isRecursive' n x
+--                   in traceShow (result,"isRevursive",n, x) result
 isRecursive :: String->Term->Bool
 -- isRecursive n x | traceShow ("isRevursive",n,x) False = undefined
 isRecursive n (Var x) =  x == n
@@ -198,9 +205,10 @@ isRecursive _ (Builtin _) = False
 isRecursive n (Lam x y) = x /= n && isRecursive n y-- is not recursive if the lambda captures the name
 isRecursive n (Def x y) = x /= n && isRecursive n y-- is not recursive if the lambda captures the name
 isRecursive n (Where n_t_pairs e) = or (map rec n_t_pairs) || isRecursive n e
-                                   where rec = \(n',t') -> not (n' == n) && isRecursive n t' -- no recurse
+                                  where rec = \(n',t') -> not (n' == n) && isRecursive n t' -- no recurse
 isRecursive n (Pair x y) = isRecursive n x || isRecursive n y                                  
 isRecursive _ (Op _) = False
+isRecursive _ Nil = False
 isRecursive n x | traceShow ("isRevursive not implemented for ",n,x) False = undefined
 isRecursive _ _ = False
 
@@ -212,15 +220,16 @@ isRecursive _ _ = False
 -- >App (App (App S (App (App S (App K (Builtin Plus))) (App K (Num 3)))) I) (App (App (Builtin Plus) (Num 1)) (Num 1))
 
 transform_where2app:: Term -> Term
--- transform_where2app (Where ([(n,e)]) x) | traceShow ("transform_where2app",n,e,x) False = undefined
+transform_where2app x | traceShow ("transform_where2app",x) False = undefined
 transform_where2app (Where ([(n,e)]) x) = case e of 
    (Lam x' e') | isRecursive n e' -> App (removevar n x) (App Y (removevar n (removevar x' e')))
    (Lam x' e') | otherwise -> App (removevar n x) (removevar x' e')    
    _   -> App (removevar n x) e
-transform_where2app (Where ([(f,e2),(g,e3)]) e1) = case isRecursive g e2 || isRecursive f e3 of
-  True -> error "transform_where2app recursive not implemented"
-  False -> U @@ (f!!(U @@ g!!(K @@ e1))) @@ (list [""!!e2,""!!e3])
-transform_where2app x = error $ "transform_where2app is not defined for" ++ (show x)
+transform_where2app (Where ([(f,e2),(g,e3)]) e1) = case rec of
+      True -> U @@ ( f!!(U @@ g!!(K @@ e1))) @@ (Y @@ (U @@ (f!!(U @@ g!!(K @@ (list [""!!e2,""!!e3]))))))
+      False -> U @@ (f!!(U @@ g!!(K @@ e1))) @@ (list [""!!e2,""!!e3])
+  where rec = (isRecursive g e2) || (isRecursive f e3) || (isRecursive f e2) || (isRecursive g e3) 
+transform_where2app x = error $ "transform_where2app is for more than two deffinitions in" ++ (show x)
 
 list :: [Term]->Term
 list xs = foldr (\x y -> (Builtin Cons) @@ x @@ y) Nil xs
