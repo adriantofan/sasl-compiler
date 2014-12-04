@@ -1,93 +1,76 @@
 module SK where
 import Prelude hiding ((!!))  
 import SASL 
-import Data.Tree 
 
 import Debug.Trace
 
 type SK = Term
 
-infixl 9 !! -- first removevar
+infixl 9 !! -- first abstract
 infixl 8 @@ -- then App
 
 (@@):: Term->Term->Term
 (@@) = App
 
 (!!):: String -> Term -> SK
-(!!) = removevar
+(!!) = abstract
 
-ppp :: Term -> String
+-- prety prints a term
+pTerm :: Term -> String
+pTerm (App x@(App _ _) y@(App _ _)) =   (pTerm x)  ++ " @ " ++ "(" ++(pTerm y) ++ ")"
+pTerm (App x y@(App _ _)) =  (pTerm x) ++ " @ " ++ "(" ++(pTerm y) ++ ")"
+pTerm (App x@(App _ _) y) =   (pTerm x)  ++ " @ " ++ (pTerm y)
+pTerm (App x y) = (pTerm x) ++ " @ " ++(pTerm y)
+pTerm (Pair x y) = "("++(pTerm x)++")" ++ ":" ++"("++(pTerm y)++")"
+pTerm x = show x
 
-ppp (App x@(App _ _) y@(App _ _)) =   (ppp x)  ++ " @ " ++ "(" ++(ppp y) ++ ")"
-ppp (App x y@(App _ _)) =  (ppp x) ++ " @ " ++ "(" ++(ppp y) ++ ")"
-ppp (App x@(App _ _) y) =   (ppp x)  ++ " @ " ++ (ppp y)
-ppp (App x y) = (ppp x) ++ " @ " ++(ppp y)
-ppp (Pair x y) = "("++(ppp x)++")" ++ ":" ++"("++(ppp y)++")"
-ppp x = show x
-
-toDataTree :: SK -> Data.Tree.Tree [Char]
-toDataTree (App x y) = Node "App" [toDataTree y,toDataTree x]
-toDataTree (Def n t) = Node ("Def " ++ show n) [toDataTree t]
-toDataTree (Lam x t) = Node ("Lam(" ++show x++")") [toDataTree t]
-toDataTree (Where xs e) = Node ("Where") [Node "Exp" [(toDataTree e)],Node "Defs" (defs xs)]
-                                    where 
-                                      defs [] = []
-                                      defs  ((n,t):ys) = (toDataTree (Def n t)):defs ys
-
-toDataTree term = Node (show term) []
-
-pp:: Term -> IO ()  
-pp = putStrLn.drawTree.toDataTree 
-
-
-
-removevar:: String -> Term -> SK
--- removevar v x | traceShow ("removevar v=",v," ,exp=",ppp x) False = undefined
-removevar v d@(Where _ _) = removevar v (transform_where2app d)
-removevar v (Lam v' t) = removevar v (removevar v' t)
+abstract:: String -> Term -> SK
+-- abstract v x | traceShow ("abstract v=",v," ,exp=",pTerm x) False = undefined
+abstract v d@(Where _ _) = abstract v (compileWhere d)
+abstract v (Lam v' t) = abstract v (abstract v' t)
 
 -- where e = constant c
-removevar v (Num x)| null v  = Num x 
+abstract v (Num x)| null v  = Num x 
                    | otherwise = App K (Num x)
-removevar v (Bol x)| null v  = Bol x 
+abstract v (Bol x)| null v  = Bol x 
                    | otherwise = App K (Bol x)                   
 -- where e = var(v)                   
-removevar v (Op "cond") | null v  = Builtin Cond
+abstract v (Op "cond") | null v  = Builtin Cond
                     | otherwise = App K (Builtin Cond)                    
-removevar v (Op "hd") | null v  = Builtin Hd
+abstract v (Op "hd") | null v  = Builtin Hd
                     | otherwise = App K (Builtin Hd)                    
-removevar v (Op "tl") | null v  = Builtin Tl
+abstract v (Op "tl") | null v  = Builtin Tl
                     | otherwise = App K (Builtin Tl)                    
-removevar v (Op ":") | null v  = Builtin Cons
+abstract v (Op ":") | null v  = Builtin Cons
                     | otherwise = App K (Builtin Cons)                    
-removevar v (Op op) | null v && isUnary op = Builtin (Unnary op)
+abstract v (Op op) | null v && isUnary op = Builtin (Unnary op)
                     | isUnary op = App K (Builtin (Unnary op))
-removevar v (Op op) | null v  = Builtin (Binary op)
+abstract v (Op op) | null v  = Builtin (Binary op)
                     | otherwise = App K (Builtin (Binary op))                    
-removevar v (Var x) | null v  = Var x
+abstract v (Var x) | null v  = Var x
                     | v == x = I
                     | otherwise = App K (Var x)
 -- where e = f@a
-removevar v (App f x) | null v = App (removevar v f) (removevar v x)
-                      | otherwise = (App (App S (removevar v f)) (removevar v x))
+abstract v (App f x) | null v = App (abstract v f) (abstract v x)
+                      | otherwise = (App (App S (abstract v f)) (abstract v x))
 -- everyting else
-removevar v S |null v = S
+abstract v S |null v = S
               |otherwise = App K S
-removevar v U |null v = U
+abstract v U |null v = U
               |otherwise = App K U
-removevar v K |null v = K
+abstract v K |null v = K
               |otherwise =  App K K
-removevar v I |null v = I
+abstract v I |null v = I
               |otherwise = App K I
-removevar v Y |null v = Y
+abstract v Y |null v = Y
               |otherwise = App K Y
-removevar v (Builtin x)|null v = Builtin x
+abstract v (Builtin x)|null v = Builtin x
                        |otherwise =App K (Builtin x)
-removevar _ Empty = Empty
-removevar v Nil |null v = Nil
+abstract _ Empty = Empty
+abstract v Nil |null v = Nil
                 |otherwise = App K Nil
 -- everyting else !!?!?!?
-removevar v x = error $ "removevar not defined for variable " ++ (show v) ++ " and term "  ++ (show x)
+abstract v x = error $ "abstract not defined for variable " ++ (show v) ++ " and term "  ++ (show x)
 
 eval :: [SK] -> SK
 -- eval xs | traceShow ("eval",xs) False = undefined
@@ -97,9 +80,8 @@ eval [x] = x
 eval xs = if null reduced  then (head xs) else eval reduced
           where reduced = reduce xs
  
--- reduce (Num x) = Num x
 reduce :: [SK] -> [SK]
--- reduce xs | traceShow ("reduce",map ppp (take 3 xs)) False = undefined
+-- reduce xs | traceShow ("reduce",map pTerm (take 3 xs)) False = undefined
 reduce (I:(App _ x):xs) = x:xs
 reduce (K:(App _ x):(App _ _):rest) = (App I x):rest              -- K combinator
 reduce (S:(App _ f):(App _ g):(App _ x):rest) =  (App (App f x) (App g x)):rest   -- S combinator                     
@@ -178,23 +160,7 @@ binaryOp op a b = case (a,b) of
                                    ("or",\x y -> (x::Bool) || (y::Bool))]
                         intBoolOp = or (map (==op) (map fst intBoolOps))
                         intIntOp = or (map (==op) (map fst intIntOps))
-skcomp :: SK -> SK -> SK
-(Num x) `skcomp` (Num y) = Bol (x == y)
-p `skcomp` q = error $ "skcomp is defined only for integers.\n" ++ (show p) ++ "\n" ++ (show q)
 
-
-skplus :: SK -> SK -> SK
-(Num x) `skplus` (Num y) = Num (x + y)
-p `skplus` q = error $ "skplus is defined only for integers.\n" ++ (show p) ++ "\n" ++ (show q)
-
-
-notTree:: SK -> Bool
-notTree (App _ _) = False
-notTree _ = True
-
--- isRecursive :: String->Term->Bool
--- isRecursive n x  = let result = isRecursive' n x
---                   in traceShow (result,"isRevursive",n, x) result
 isRecursive :: String->Term->Bool
 -- isRecursive n x | traceShow ("isRevursive",n,x) False = undefined
 isRecursive n (Var x) =  x == n
@@ -212,27 +178,18 @@ isRecursive _ Nil = False
 isRecursive n x | traceShow ("isRevursive not implemented for ",n,x) False = undefined
 isRecursive _ _ = False
 
--- takes a Where definition and transforms it in function application by abstracting variables
--- 3 + f == 5  where f = 1 + 1  
--- where f = (App (App (Op "+") (Num 1)) (Num 1)) in  (App (App (Op "+") (Num 3)) (Var "f"))
--- Where [("f",(App (App (Op "+") (Num 1)) (Num 1)))] (App (App (Op "+") (Num 3)) (Var "f"))
--- >removevar "" $ Where [("f",(App (App (Op "+") (Num 1)) (Num 1)))] (App (App (Op "+") (Num 3)) (Var "f"))
--- >App (App (App S (App (App S (App K (Builtin Plus))) (App K (Num 3)))) I) (App (App (Builtin Plus) (Num 1)) (Num 1))
-
-transform_where2app:: Term -> Term
-transform_where2app x | traceShow ("transform_where2app",x) False = undefined
-transform_where2app (Where ([(n,e)]) x) = case e of 
-   (Lam x' e') | isRecursive n e' -> App (removevar n x) (App Y (removevar n (removevar x' e')))
-   (Lam x' e') | otherwise -> App (removevar n x) (removevar x' e')    
-   _   -> App (removevar n x) e
-transform_where2app (Where ([(f,e2),(g,e3)]) e1) = case rec of
-      True -> U @@ ( f!!(U @@ g!!(K @@ e1))) @@ (Y @@ (U @@ (f!!(U @@ g!!(K @@ (list [""!!e2,""!!e3]))))))
-      False -> U @@ (f!!(U @@ g!!(K @@ e1))) @@ (list [""!!e2,""!!e3])
+-- compiles a where expresion in a variable free lambda
+compileWhere:: Term -> Term
+-- compileWhere x | traceShow ("compileWhere",x) False = undefined
+compileWhere (Where ([(n,e)]) x) = case e of 
+   (Lam x' e') | isRecursive n e' -> App (abstract n x) (App Y (abstract n (abstract x' e')))
+   (Lam x' e') | otherwise -> App (abstract n x) (abstract x' e')    
+   _   -> App (abstract n x) e
+compileWhere (Where ([(f,e2),(g,e3)]) e1) = case rec of
+      True -> U @@ ( f!!(U @@ g!!(K @@ e1))) @@ (Y @@ (U @@ (f!!(U @@ g!!(K @@ (toList [""!!e2,""!!e3]))))))
+      False -> U @@ (f!!(U @@ g!!(K @@ e1))) @@ (toList [""!!e2,""!!e3])
   where rec = (isRecursive g e2) || (isRecursive f e3) || (isRecursive f e2) || (isRecursive g e3) 
-transform_where2app x = error $ "transform_where2app is for more than two deffinitions in" ++ (show x)
+compileWhere x = error $ "compileWhere is for more than two definitions in" ++ (show x)
 
-list :: [Term]->Term
-list xs = foldr (\x y -> (Builtin Cons) @@ x @@ y) Nil xs
-
-   -- _   -> error $ "undefined transform_where2app " ++ (show [(f1,e1),(f2,e2)])
-                                               
+toList :: [Term]->Term
+toList xs = foldr (\x y -> (Builtin Cons) @@ x @@ y) Nil xs

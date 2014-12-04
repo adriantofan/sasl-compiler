@@ -39,18 +39,18 @@ data Term = Str [Char]
             deriving (Show)
 
 program :: Parser ([Term],Term)
-program = (do xs <- many_offside global_def
+program = (do xs <- many_offside globalDef
               _ <- symbol "."
               p <- expr
               return (xs,p))
             +++ (do p <- expr
                     return ([],p))
            
-global_def :: Parser Term 
-global_def =  do _ <- symbol "def"
-                 n <- name
-                 a <- abstraction
-                 return $ Def n a
+globalDef :: Parser Term 
+globalDef =  do _ <- symbol "def"
+                n <- name
+                a <- abstraction
+                return $ Def n a
 
 abstraction :: Parser Term
 abstraction = do _ <- symbol "="
@@ -67,30 +67,13 @@ def = do n <- name
             
 expr :: Parser Term
 expr = do e <- condexpr
-          (do d <- exprs''
-              return (makeWhere' d e)) +++ (return e)
+          (do d <- whereExps
+              return (makeWhere d e)) +++ (return e)
               
-exprs'' :: Parser [Term]
-exprs'' = do _ <- symbol "where"
-             many1_offside def
+whereExps :: Parser [Term]
+whereExps = do _ <- symbol "where"
+               many1_offside def
            
-makeWhere':: [Term] -> Term -> Term 
-makeWhere' defs a = Where (map defToPair defs) a
-  where defToPair x = case x of
-                        (Def n val)-> (n,val)
-                        _ -> error $ "where definition  should contain only defs. got "++ "" ++" instead"
-              
--- makeWhere:: Term -> Term -> Term
--- makeWhere (Def n val) a = Where [(n,val)] a
--- makeWhere x y = error $ "makeWhere not defined for" ++ show x ++ show y
---
--- expr' :: Parser Term
--- expr' = do _ <- symbol "where"
---            def
-                
-        -- "where" (many def) expr'
-        -- +++ ""
-
 condexpr :: Parser Term
 condexpr = do _ <- symbol "if"
               c <- expr
@@ -103,13 +86,13 @@ condexpr = do _ <- symbol "if"
 
 
 listexpr :: Parser Term
-listexpr = opexpr `chainr1` ops [(symbol  ":" , infix_op ":")]
+listexpr = opexpr `chainr1` ops [(symbol  ":" , infixOp ":")]
 
 opexpr :: Parser Term
-opexpr = conjunct `chainl1` ops [(symbol  "or" , infix_op "or")]  
+opexpr = conjunct `chainl1` ops [(symbol  "or" , infixOp "or")]  
 
 conjunct :: Parser Term
-conjunct = compar `chainl1` ops [(symbol  "and" , infix_op "and")]
+conjunct = compar `chainl1` ops [(symbol  "and" , infixOp "and")]
 
 compar :: Parser Term
 compar = add `chainl1` compop
@@ -145,7 +128,7 @@ paren :: Parser Term
 paren = bracket (symbol "(") expr (symbol ")") -- put exp here
 
 constant :: Parser Term         
-constant = num +++ bool +++ str +++ nil -- +++ list
+constant = num +++ bool +++ str +++ nil +++ list
 
 variable :: Parser Term
 variable = do v <- name 
@@ -167,25 +150,41 @@ nil = do _ <- (symbol "nil")
          return Nil
         
 str :: Parser Term
-str = do x <- bracket (char '\"') (many escaped_ascii) (char '\"')
+str = do x <- bracket (char '\"') (many escapedAscii) (char '\"')
          return $ Str x
 
 compop:: Parser (Term -> Term -> Term)
-compop = ops [(symbol  "=" , infix_op "="),
-              ((symbol "~="), infix_op "~="),
-              ((symbol "<" ), infix_op "<"),
-              ((symbol ">" ), infix_op ">"),
-              ((symbol ">="), infix_op ">="),
-              ((symbol "<="), infix_op "<=")]         
+compop = ops [(symbol  "=" , infixOp "="),
+              ((symbol "~="), infixOp "~="),
+              ((symbol "<" ), infixOp "<"),
+              ((symbol ">" ), infixOp ">"),
+              ((symbol ">="), infixOp ">="),
+              ((symbol "<="), infixOp "<=")]         
 
           
 addop :: Parser (Term -> Term -> Term)          
-addop = ops [(symbol "+", infix_op "+"),((symbol "-"), infix_op "-")]          
+addop = ops [(symbol "+", infixOp "+"),((symbol "-"), infixOp "-")]          
           
 mulop :: Parser (Term -> Term -> Term)          
-mulop = ops [(symbol "*", infix_op "*"),((symbol "/"), infix_op "/")]
+mulop = ops [(symbol "*", infixOp "*"),((symbol "/"), infixOp "/")]
 
---- More Usefull parsers ----------------
+list :: Parser Term
+list = do _ <- symbol "["
+          items <- expr `sepby1` symbol  ","
+          _ <- symbol "]"
+          return $ toConses items
+          
+
+
+--- More Usefull parsers and helpers ----------------
+toConses :: [Term]->Term
+toConses xs = foldr (\x y -> App (App (Op ":") x) y) Nil xs
+
+makeWhere:: [Term] -> Term -> Term 
+makeWhere defs a = Where (map defToPair defs) a
+  where defToPair x = case x of
+                        (Def n val)-> (n,val)
+                        _ -> error $ "where definition  should contain only defs. got "++ "" ++" instead"
 
 name :: Parser String
 name = identifier ["hd","tl","true","false","not","and","or","def","nil","then","else","where"] -- shoul we add reserved words?
@@ -193,13 +192,13 @@ name = identifier ["hd","tl","true","false","not","and","or","def","nil","then",
 prefix :: Parser String
 prefix = symbol "+" +++ symbol "-" +++ symbol "not"
     
-infix_op :: String->Term->Term->Term
-infix_op s = \a b -> (App (App (Op s) a) b) 
+infixOp :: String->Term->Term->Term
+infixOp s = \a b -> (App (App (Op s) a) b) 
 
 ascii :: Parser Char
 ascii = sat isAscii 
         
-escaped_ascii :: Parser Char
-escaped_ascii =  (do {_ <- string "\\\"";return '"'}) +++ 
+escapedAscii :: Parser Char
+escapedAscii =  (do {_ <- string "\\\"";return '"'}) +++ 
                  (do{ x<-ascii;guard(x/='"');return x})
                  

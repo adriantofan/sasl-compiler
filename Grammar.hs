@@ -155,9 +155,6 @@ junck :: Parser ()
 junck = do _ <- setenv (0::Int,-1::Int) (many (spaces +++ comment))
            return ()
            
--- parse already invokes junk befor p           
--- prop_junck = 'n' == fromJust (parse_result (do {junck;item}) "   \n   \tn")
-
 strip         :: Parser a -> Parser a
 strip p = do _ <- junck
              p
@@ -166,8 +163,6 @@ token :: Parser a -> Parser a
 token p = do v <- p 
              _ <- junck
              return (v)
-
--- prop_token = "11" == fromJust (parse_result (token (many digit)) "11   ") -- parses and removes trailing junk(whitespace)
              
 many1_offside  :: Parser a -> Parser [a]
 many1_offside p = do (pos,_) <- fetch_pos
@@ -187,7 +182,6 @@ off p = do (_,dc) <- env_pos
 --   def2 <- if curent positions c = env's c, setenv (l,c) for the curent p (def1)
 --   def3 <- if curent positions c = env's c, setenv (l,c) for the curent p (def1)
 --  something else c nolonger equals env's c
-
 
 --- Token parsers ----------------------------------------------------
 
